@@ -153,7 +153,6 @@ fn op::Ref? native_spawn(Loop* loop, Process* process, SpawnOptions options, Cal
 		return native_spawn_fork(loop, process, options, callback, userdata)!;
 	}
 	validate_spawn_platform_features(options)!;
-	ensure_process_signal(loop)!;
 
 	posix::Posix_spawn_file_actions_t actions;
 	CInt init_status = posix::spawn_file_actions_init(&actions);
@@ -172,7 +171,6 @@ fn op::Ref? native_spawn(Loop* loop, Process* process, SpawnOptions options, Cal
 	{
 		if (!spawned) cleanup_failed_stdio(process, &state);
 		state.close_temp_fds();
-		if (!spawned && loop.process_count == 0) stop_process_signal_now(loop);
 	}
 
 	configure_stdio(&state, &state.stdin, &actions, libc::STDIN_FD, options.stdin)!;
@@ -259,15 +257,12 @@ fn op::Ref? native_spawn_fork(
 	void* userdata
 ) @local
 {
-	ensure_process_signal(loop)!;
-
 	NativeSpawnState state = make_spawn_state(process);
 	bool spawned           = false;
 	defer
 	{
 		if (!spawned) cleanup_failed_stdio(process, &state);
 		state.close_temp_fds();
-		if (!spawned && loop.process_count == 0) stop_process_signal_now(loop);
 	}
 
 	configure_stdio_fork(&state, &state.stdin, libc::STDIN_FD, options.stdin)!;
@@ -334,9 +329,10 @@ fn op::Ref? finish_spawn_success(
 	if (!backend_wait)
 	{
 		op::init_header(&process.header, op::Kind.PROCESS, loop, &dispatch_process_exit, process, userdata);
+		ensure_process_signal(loop)!;
 	}
 	attach_process(loop, process);
-	if (!process_signal_required(loop)) stop_process_signal_now(loop);
+	if (!backend_wait) reap_if_already_exited(loop, process);
 	return process.header.to_ref();
 }
 
@@ -415,6 +411,30 @@ fn sz? native_drain_exited(Loop* loop) @private
 		process = next;
 	}
 	return queued;
+}
+
+<*
+ Reap a just-spawned child that may have already exited before its SIGCHLD
+ fallback handler was armed.
+
+ Closes the spawn-to-arm race on the SIGCHLD fallback path: with no backend
+ waiter, the handler is armed after the child is spawned, so a child that exits
+ in that window would otherwise never deliver a catchable signal. A targeted
+ `waitpid` queues its completion; a still-running child is left for the now-armed
+ handler. Backend-waiter children never take this path (a pidfd/kqueue waiter
+ catches an already-exited child on its own).
+
+ @param loop : "Loop that owns the process"
+ @param process : "Freshly attached process using the SIGCHLD fallback"
+*>
+fn void reap_if_already_exited(Loop* loop, Process* process) @local
+{
+	CInt status;
+	Pid_t result = waitpid_nohang(process.pid, &status);
+	if (result == (Pid_t)process.pid)
+	{
+		finish_process_exit(loop, process, status, nova::ok_status(), { });
+	}
 }
 
 <*
