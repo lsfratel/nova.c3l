@@ -64,6 +64,27 @@ const uint IORING_ENTER_GETEVENTS = 0x1;
 const uint IORING_ENTER_EXT_ARG   = 0x8;
 
 <*
+ `io_uring_setup` flags negotiated at probe time. `SINGLE_ISSUER` (6.0+) lets the
+ kernel skip submitter-side locking because only the loop owner thread ever
+ submits or reaps; `DEFER_TASKRUN` (6.1+, requires SINGLE_ISSUER) defers
+ completion task work to a reaping `io_uring_enter(GETEVENTS)`; `COOP_TASKRUN`
+ (5.19+) stops the kernel forcing task work via IPI; `TASKRUN_FLAG` (5.19+) makes
+ the kernel set `IORING_SQ_TASKRUN` when task work is pending. Unsupported flags
+ make `io_uring_setup` fail with `-EINVAL`, which the negotiation uses to fall
+ back.
+*>
+const uint IORING_SETUP_COOP_TASKRUN  = 0x100;
+const uint IORING_SETUP_TASKRUN_FLAG  = 0x200;
+const uint IORING_SETUP_SINGLE_ISSUER = 0x1000;
+const uint IORING_SETUP_DEFER_TASKRUN = 0x2000;
+
+<*
+ SQ ring `flags` bit the kernel sets (only when `TASKRUN_FLAG` was negotiated) to
+ signal pending completion task work that a reaping `io_uring_enter` will run.
+*>
+const uint IORING_SQ_TASKRUN = 0x4;
+
+<*
  `io_uring_params.features` bits relied on by this backend: single mmap for both
  rings and timed `io_uring_enter` via EXT_ARG.
 *>
@@ -253,7 +274,8 @@ struct IoUringProbe
 
  `available` is false when `io_uring_setup` itself failed (kernel without
  io_uring or blocked by seccomp/`io_uring_disabled`). The remaining flags are
- only meaningful when `available` is true.
+ only meaningful when `available` is true. `setup_flags` holds the negotiated
+ `io_uring_setup` flags to apply to the real ring (0 when none are supported).
 *>
 struct Caps
 {
@@ -266,6 +288,7 @@ struct Caps
 	bool connect;
 	bool recvmsg;
 	bool sendmsg;
+	uint setup_flags;
 }
 
 <*
@@ -366,6 +389,43 @@ fn void unmap_region(void* addr, usz length)
 }
 
 <*
+ Report whether `io_uring_setup` accepts a candidate set of setup flags.
+
+ Attempts a throwaway ring; an unsupported flag fails with `-EINVAL`. The
+ transient fd is closed before returning. Support cannot be queried, only
+ attempted, and kernel version is an unreliable proxy, so this probes directly.
+
+ @param flags : "Candidate io_uring_setup flags"
+ @return "True when the kernel accepts the flags"
+*>
+fn bool setup_flags_supported(uint flags) @local
+{
+	IoUringParams params;
+	params.flags = flags;
+	long fd = sys_setup(8, &params);
+	if (fd < 0) return false;
+	(void)libc::close((int)fd);
+	return true;
+}
+
+<*
+ Negotiate the strongest supported `io_uring_setup` flags, highest tier first:
+ `SINGLE_ISSUER|DEFER_TASKRUN|TASKRUN_FLAG` (6.1+), then `COOP_TASKRUN|TASKRUN_FLAG`
+ (5.19+), then none. The loop owner thread is the sole ring submitter/reaper, so
+ the single-issuer requirement always holds.
+
+ @return "Supported setup flags to apply to the real ring, or 0 when none"
+*>
+fn uint negotiate_setup_flags() @local
+{
+	uint defer_flags = IORING_SETUP_SINGLE_ISSUER | IORING_SETUP_DEFER_TASKRUN | IORING_SETUP_TASKRUN_FLAG;
+	if (setup_flags_supported(defer_flags)) return defer_flags;
+	uint coop_flags = IORING_SETUP_COOP_TASKRUN | IORING_SETUP_TASKRUN_FLAG;
+	if (setup_flags_supported(coop_flags)) return coop_flags;
+	return 0;
+}
+
+<*
  Probe io_uring availability and the capabilities this backend depends on.
 
  Creates a throwaway ring, reads its feature flags, runs `IORING_REGISTER_PROBE`,
@@ -384,6 +444,7 @@ fn Caps probe_capabilities()
 
 	caps.available = true;
 	caps.ext_arg = (params.features & IORING_FEAT_EXT_ARG) != 0;
+	caps.setup_flags = negotiate_setup_flags();
 
 	IoUringProbe probe;
 	if (sys_register((int)fd, IORING_REGISTER_PROBE, &probe, (uint)PROBE_OP_COUNT) < 0) return caps;

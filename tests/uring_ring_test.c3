@@ -30,7 +30,7 @@ fn bool pop_cqe(uring::UringState* ring, uring::IoUringCqe* out) @local
 fn void test_uring_ring_poll_roundtrip() @test
 {
 	uring::UringState ring;
-	if (!ring.init(8)) return;
+	if (!ring.init(8, 0)) return;
 	defer ring.destroy();
 
 	int efd = uring::eventfd(1, 0);

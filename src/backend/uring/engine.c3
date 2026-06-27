@@ -35,7 +35,7 @@ fn void? init(Loop* loop, Caps caps) @inline @private
 	UringState[] arr = alloc::new_array_try(loop.allocator, UringState, 1)!;
 	UringState* st   = &arr[0];
 
-	if (!st.init((uint)entries))
+	if (!st.init((uint)entries, caps.setup_flags))
 	{
 		alloc::free(loop.allocator, arr.ptr);
 		return nova::BACKEND_FAILED~;

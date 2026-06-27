@@ -35,6 +35,7 @@ struct UringState
 	uint* sq_tail;
 	uint sq_mask;
 	uint* sq_array;
+	uint* sq_flags;
 	IoUringSqe* sqe_arr;
 	uint* cq_head;
 	uint* cq_tail;
@@ -50,13 +51,15 @@ struct UringState
 
  @param [&inout] self : "Uninitialized ring state"
  @param entries : "Requested submission queue depth"
+ @param setup_flags : "Negotiated io_uring_setup flags, or 0 for none"
  @return "True when the ring is set up and mapped"
  @require self.ring_fd == 0 : "Ring state must be zeroed before init"
  @require entries > 0 : "Submission depth must be positive"
 *>
-fn bool UringState.init(&self, uint entries)
+fn bool UringState.init(&self, uint entries, uint setup_flags)
 {
 	IoUringParams params;
+	params.flags = setup_flags;
 	long fd = sys_setup(entries, &params);
 	if (fd < 0) return false;
 
@@ -107,6 +110,7 @@ fn bool UringState.init(&self, uint entries)
 	self.sq_tail = (uint*)(sb + params.sq_off.tail);
 	self.sq_mask = *(uint*)(sb + params.sq_off.ring_mask);
 	self.sq_array = (uint*)(sb + params.sq_off.array);
+	self.sq_flags = (uint*)(sb + params.sq_off.flags);
 
 	char* cb = (char*)self.cq_ring;
 	self.cq_head = (uint*)(cb + params.cq_off.head);
@@ -495,9 +499,22 @@ fn bool UringState.stage_rw(&self, char opcode, int fd, char[] buffer, uint op_f
 }
 
 <*
+ Report whether the kernel signaled pending completion task work in the SQ ring
+ flags. Only ever set when `TASKRUN_FLAG` was negotiated (DEFER/COOP tiers);
+ always false on baseline kernels, so the `flush` fast path is unchanged there.
+
+ @param self : "Mapped ring state"
+ @return "True when a reaping enter should run deferred completion task work"
+*>
+fn bool UringState.sq_taskrun_pending(&self) => (*self.sq_flags & IORING_SQ_TASKRUN) != 0;
+
+<*
  Submit all staged SQEs (and optionally wait) via `io_uring_enter`, clearing the
  pending count on success. Deferring submission to here batches registrations and
  makes readiness evaluate at poll time, matching the epoll backend.
+
+ With `DEFER_TASKRUN`, completions are only processed inside a reaping enter, so
+ the no-op fast path must also enter when the kernel signals pending task work.
 
  @param [&inout] self : "Mapped ring state"
  @param min_complete : "Completions to wait for, or zero to not block"
@@ -508,7 +525,7 @@ fn bool UringState.stage_rw(&self, char opcode, int fd, char[] buffer, uint op_f
 *>
 fn long UringState.flush(&self, uint min_complete, uint flags, void* arg, usz argsz)
 {
-	if (self.pending == 0 && min_complete == 0) return 0;
+	if (self.pending == 0 && min_complete == 0 && !self.sq_taskrun_pending()) return 0;
 	long r = sys_enter(self.ring_fd, self.pending, min_complete, flags, arg, argsz);
 	if (r >= 0) self.pending = 0;
 	return r;
