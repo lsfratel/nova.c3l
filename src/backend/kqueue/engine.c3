@@ -1019,8 +1019,10 @@ fn sz poll(Loop* loop, int timeout_ms) @inline @private
 
 		if (op.kind == Kind.WATCH || op.kind == Kind.PROCESS)
 		{
-			uint ready = ready_flags_from_kqueue_event(&events[i]);
-			if (op.kind == Kind.WATCH)
+			uint ready    = ready_flags_from_kqueue_event(&events[i]);
+			uint interest = op.backend.interest;
+			if (op.kind == Kind.WATCH && (interest & nova::READY_READABLE) != 0
+				&& (interest & nova::READY_WRITABLE) != 0)
 			{
 				for (int j = i + 1; j < count; j++)
 				{

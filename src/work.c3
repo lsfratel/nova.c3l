@@ -615,11 +615,7 @@ fn int pool_worker_main(void* raw) @local
 
 		callback(task);
 
-		pool.mutex.lock();
-		task.callback = null;
-		task.done = null;
 		@atomic_store(task.state, TASK_FREE);
-		pool.mutex.unlock();
 
 		if (done) done(task);
 	}
