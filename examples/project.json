@@ -1,0 +1,95 @@
+{
+  "langrev": "1",
+  "sources": ["../src/**", "common.c3"],
+  "build-dir": "build",
+  "output": "build",
+  "opt": "O3",
+  "targets": {
+    "http": {
+      "sources": ["http.c3"],
+      "type": "executable"
+    },
+    "http-multithread": {
+      "sources": ["http_multithread.c3"],
+      "type": "executable"
+    },
+    "http-signal": {
+      "sources": ["http_signal.c3"],
+      "type": "executable"
+    },
+    "dns": {
+      "sources": ["dns.c3"],
+      "type": "executable"
+    },
+    "pipe": {
+      "sources": ["pipe.c3"],
+      "type": "executable"
+    },
+    "process": {
+      "sources": ["process.c3"],
+      "type": "executable"
+    },
+    "timer": {
+      "sources": ["timer.c3"],
+      "type": "executable"
+    },
+    "udp-echo": {
+      "sources": ["udp_echo.c3"],
+      "type": "executable"
+    },
+    "work-pool": {
+      "sources": ["work_pool.c3"],
+      "type": "executable"
+    },
+    "tcp-echo": {
+      "sources": ["tcp_echo.c3"],
+      "type": "executable"
+    },
+    "ping-pong": {
+      "sources": ["ping_pong.c3"],
+      "type": "executable"
+    },
+    "fs-cat": {
+      "sources": ["fs_cat.c3"],
+      "type": "executable"
+    },
+    "fs-watch": {
+      "sources": ["fs_watch.c3"],
+      "type": "executable"
+    },
+    "buffered-echo": {
+      "sources": ["buffered_echo.c3"],
+      "type": "executable"
+    },
+    "framed-echo": {
+      "sources": ["framed_echo.c3"],
+      "type": "executable"
+    },
+    "watch": {
+      "sources": ["watch.c3"],
+      "type": "executable"
+    },
+    "all": {
+      "type": "prepare",
+      "script-dir": ".",
+      "exec": [
+        "c3c build http",
+        "c3c build http-multithread",
+        "c3c build http-signal",
+        "c3c build dns",
+        "c3c build pipe",
+        "c3c build process",
+        "c3c build timer",
+        "c3c build udp-echo",
+        "c3c build work-pool",
+        "c3c build tcp-echo",
+        "c3c build ping-pong",
+        "c3c build fs-cat",
+        "c3c build fs-watch",
+        "c3c build buffered-echo",
+        "c3c build framed-echo",
+        "c3c build watch"
+      ]
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "provides" : "nova",
+  "sources" : [ "src/**" ],
+  "targets" : {
+    "linux-aarch64" : {},
+    "linux-x64" : {},
+    "macos-aarch64" : {},
+    "macos-x64" : {}
+  }
+}
