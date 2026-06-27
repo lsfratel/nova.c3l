@@ -1,0 +1,13 @@
+{
+  "langrev": "1",
+  "sources": [ "src/**" ],
+  "test-sources": [ "tests/**" ],
+  "build-dir": "build",
+  "output": "build",
+  "targets": {
+    "tests": {
+      "type": "test",
+      "opt": "O0"
+    }
+  }
+}
