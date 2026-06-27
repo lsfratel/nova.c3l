@@ -583,7 +583,7 @@ fn sz? native_tcp_readv(NativeHandle handle, char[][] vectors, usz first_offset)
 	os::NativeSocket fd = (os::NativeSocket)(int)handle;
 	if (!fd.is_valid()) return nova::INVALID_SOCKET~;
 
-	UdpIoVec[MAX_READ_IOV] iov @noinit;
+	UdpIoVec[MAX_READ_IOV] iov;
 	usz n = 0;
 	for (usz i = 0; i < vectors.len && n < MAX_READ_IOV; i++)
 	{
@@ -663,7 +663,7 @@ fn sz? native_tcp_writev(NativeHandle handle, char[][] vectors, usz first_offset
 	os::NativeSocket fd = (os::NativeSocket)(int)handle;
 	if (!fd.is_valid()) return nova::INVALID_SOCKET~;
 
-	UdpIoVec[MAX_WRITE_IOV] iov @noinit;
+	UdpIoVec[MAX_WRITE_IOV] iov;
 	usz n = 0;
 	for (usz i = 0; i < vectors.len && n < MAX_WRITE_IOV; i++)
 	{
@@ -848,7 +848,7 @@ fn NativeUdpRecvResult? native_udp_recv(NativeHandle handle, char[] buffer)
 
 	while (true)
 	{
-		SockAddrAny peer @noinit;
+		SockAddrAny peer;
 		UdpIoVec iov = { .iov_base = buffer.ptr, .iov_len = (usz)buffer.len, };
 		UdpMsgHdr message = {
 			.msg_name = &peer,
@@ -1048,7 +1048,7 @@ fn sz? native_udp_send(NativeHandle handle, char[] bytes, Endpoint* remote)
 	os::NativeSocket fd = (os::NativeSocket)(int)handle;
 	if (!fd.is_valid()) return nova::INVALID_SOCKET~;
 
-	SockAddrAny address @noinit;
+	SockAddrAny address;
 	os::SockAddrPtr address_ptr = (os::SockAddrPtr)null;
 	os::Socklen_t address_len   = 0;
 	if (remote)
