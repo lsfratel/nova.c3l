@@ -416,11 +416,27 @@ fn void? StreamConn.arm_read(&self, Loop* loop)
 
 <*
  Queue bytes for sending and flush as soon as no write is in flight.
+
+ Fast path: when nothing is buffered and no write is in flight, send directly
+ with a synchronous `try_write` and copy only the unsent remainder into the
+ output ring. This avoids a full-payload copy and an async write submission when
+ the socket accepts the data immediately. Order is preserved because the fast
+ path runs only while the output ring is empty; any `try_write` failure (e.g.
+ `WOULD_BLOCK`) falls back to buffering and the async write path.
+
  @require self.initialized
  @return ? nova::BACKPRESSURE : "output ring is full"
 *>
 fn void? StreamConn.write(&self, Loop* loop, char[] bytes)
 {
+	if (bytes.len && self.output.is_empty() && !self.writing && !self.closed)
+	{
+		if (try sent = self.stream.try_write(bytes))
+		{
+			if ((usz)sent >= bytes.len) return;
+			bytes = bytes[(usz)sent..];
+		}
+	}
 	self.output.append(bytes)!;
 	self.flush(loop)!;
 }
