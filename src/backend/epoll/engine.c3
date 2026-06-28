@@ -645,8 +645,7 @@ fn sz poll(Loop* loop, int timeout_ms) @inline @private
 		if (backend_event_is_watcher(&events[i]))
 		{
 			backend::Watcher* watcher = backend_event_watcher(&events[i]);
-			backend::backend_watcher_ready(loop, watcher, ready_flags_from_linux_events(events[i].events));
-			progress++;
+			progress += backend::backend_watcher_ready(loop, watcher, ready_flags_from_linux_events(events[i].events));
 			continue;
 		}
 

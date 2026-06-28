@@ -294,12 +294,13 @@ fn void backend_wait_write(Loop* loop, Watcher* watcher, Header* op) @private
  @param op : "Attached operation to queue, or null when no operation is waiting"
  @param interest : "Read or write interest being satisfied"
  @param ready_flags : "Readiness flags delivered to the operation"
+ @return "True when an operation was queued, false when none was waiting"
  @require loop != null : "Loop pointer must not be null"
  @require watcher != null : "Watcher pointer must not be null"
 *>
-fn void backend_queue_watcher_op(Loop* loop, Watcher* watcher, Header* op, uint interest, uint ready_flags) @private
+fn bool backend_queue_watcher_op(Loop* loop, Watcher* watcher, Header* op, uint interest, uint ready_flags) @private
 {
-	if (!op || op.state != State.OP_ACTIVE) return;
+	if (!op || op.state != State.OP_ACTIVE) return false;
 
 	if (interest == nova::READY_READABLE)
 	{
@@ -317,29 +318,35 @@ fn void backend_queue_watcher_op(Loop* loop, Watcher* watcher, Header* op, uint 
 	if (op.backend) op.backend.counted = false;
 	op.ready_flags = ready_flags;
 	nova::queue_ready(loop, op, nova::ok_status());
+	return true;
 }
 
 <*
  Cache watcher readiness and queue any matching attached operations.
 
+ Returns the number of operations actually queued so the poll loop counts only
+ real progress: a readiness event that matches no waiting operation (e.g. a
+ spurious writable edge on a recv-only socket, which kqueue delivers as its own
+ kevent) must not count as progress, or a single `run(ONCE)` could return before
+ the awaited operation is dispatched.
+
  @param loop : "Loop that owns the watcher"
  @param watcher : "Persistent stream or listener watcher, or null for stale userdata"
  @param ready_flags : "Backend-neutral readiness flags to cache"
+ @return "Number of attached operations queued ready (0, 1, or 2)"
  @require loop != null : "Loop pointer must not be null"
 *>
-fn void backend_watcher_ready(Loop* loop, Watcher* watcher, uint ready_flags) @private
+fn sz backend_watcher_ready(Loop* loop, Watcher* watcher, uint ready_flags) @private
 {
-	if (!watcher || !watcher.registered || watcher.loop != loop) return;
+	if (!watcher || !watcher.registered || watcher.loop != loop) return 0;
 
 	watcher.ready_flags |= ready_flags;
-	if (backend_ready_matches(
-		ready_flags,
-		nova::READY_READABLE
-	)) backend_queue_watcher_op(loop, watcher, watcher.read_op, nova::READY_READABLE, ready_flags);
-	if (backend_ready_matches(
-		ready_flags,
-		nova::READY_WRITABLE
-	)) backend_queue_watcher_op(loop, watcher, watcher.write_op, nova::READY_WRITABLE, ready_flags);
+	sz queued = 0;
+	if (backend_ready_matches(ready_flags, nova::READY_READABLE)
+		&& backend_queue_watcher_op(loop, watcher, watcher.read_op, nova::READY_READABLE, ready_flags)) queued++;
+	if (backend_ready_matches(ready_flags, nova::READY_WRITABLE)
+		&& backend_queue_watcher_op(loop, watcher, watcher.write_op, nova::READY_WRITABLE, ready_flags)) queued++;
+	return queued;
 }
 
 <*
